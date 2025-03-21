@@ -11,6 +11,7 @@ import (
 	"time"
 	"net/http"
 	"encoding/csv"
+	"encoding/json"
 
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/cdproto/target"
@@ -18,22 +19,25 @@ import (
 )
 
 // Start Chrome with remote debugging
+// Start Chrome with remote debugging (Chromium specifically)
 func StartChrome() error {
 	linkedInURL := "https://www.linkedin.com/"
 
 	var cmd *exec.Cmd
+	// Use the correct path to Chromium from Snap (on Linux)
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", "start", "chrome", "--remote-debugging-port=9222", "--profile-directory=Profile 9", linkedInURL)
+		cmd = exec.Command("cmd", "/C", "start", "chromium", "--remote-debugging-port=9222", "--profile-directory=Profile 9", linkedInURL)
 	} else if runtime.GOOS == "linux" {
-		cmd = exec.Command("google-chrome", "--remote-debugging-port=9222", "--profile-directory=Profile 9", linkedInURL)
+		cmd = exec.Command("/snap/bin/chromium", "--remote-debugging-port=9222", "--profile-directory=Profile 1", linkedInURL)
 	} else if runtime.GOOS == "darwin" {
-		cmd = exec.Command("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--remote-debugging-port=9222", "--profile-directory=Profile 9", linkedInURL)
+		cmd = exec.Command("/Applications/Chromium.app/Contents/MacOS/Chromium", "--remote-debugging-port=9222", "--profile-directory=Profile 9", linkedInURL)
 	} else {
 		return fmt.Errorf("unsupported OS")
 	}
 
 	return cmd.Start()
 }
+
 
 
 // Find and click the apply button
@@ -124,33 +128,32 @@ func StoreApplicationLink(title, link string) error {
 
 // Process multiple job links
 func ProcessJobLinks(ctx context.Context, jobLinks map[string][]string) error {
-    ctx, cancel := chromedp.NewContext(ctx)
-    defer cancel()
+	ctx, cancel := chromedp.NewContext(ctx)
+	defer cancel()
 
-    err := chromedp.Run(ctx,
-        chromedp.Navigate("https://www.linkedin.com/search/"),
-        chromedp.Sleep(3*time.Second),
-    )
-    if err != nil {
-        return fmt.Errorf("failed to load LinkedIn feed: %v", err)
-    }
-    fmt.Println("✅ LinkedIn session initiated!")
+	err := chromedp.Run(ctx,
+		chromedp.Navigate("https://www.linkedin.com/search/"),
+		chromedp.Sleep(3*time.Second),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to load LinkedIn feed: %v", err)
+	}
+	fmt.Println("✅ LinkedIn session initiated!")
 
-    for title, links := range jobLinks {
-        fmt.Printf("📌 Processing jobs for: %s\n", title)
-        for _, jobLink := range links {
-            fmt.Println("🔗 Processing:", jobLink)
+	for title, links := range jobLinks {
+		fmt.Printf("📌 Processing jobs for: %s\n", title)
+		for _, jobLink := range links {
+			fmt.Println("🔗 Processing:", jobLink)
 
-            _, err := ProcessJobApplication(ctx, title, jobLink) // Fix: Pass title
-            if err != nil {
-                log.Printf("❌ Error processing job %s: %v\n", title, err)
-                continue
-            }
-        }
-    }
-    return nil
+			_, err := ProcessJobApplication(ctx, title, jobLink) // Fix: Pass title
+			if err != nil {
+				log.Printf("❌ Error processing job %s: %v\n", title, err)
+				continue
+			}
+		}
+	}
+	return nil
 }
-
 
 // Read job links from a file
 func LoadJobLinks(filename string) (map[string][]string, error) {
@@ -183,18 +186,17 @@ func LoadJobLinks(filename string) (map[string][]string, error) {
 
 	return jobLinks, nil
 }
-
 // Main function to trigger automation
 func LoginLinkedInHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("🚀 Starting LinkedIn job application automation...")
 
-	// Start Chrome
+	// Start Chrome (Chromium) with remote debugging
 	if err := StartChrome(); err != nil {
 		log.Fatalf("❌ Failed to start Chrome: %v", err)
 	}
 	fmt.Println("✅ Chrome launched successfully.")
 
-	// Wait to ensure Chrome is running
+	// Wait for Chrome to start and be ready for remote debugging
 	time.Sleep(5 * time.Second)
 
 	// Load job links from CSV file
@@ -204,14 +206,27 @@ func LoginLinkedInHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Printf("✅ Loaded %d job titles with links.\n", len(jobLinks))
 
-	// Create ChromeDP context
-	ctx, cancel := chromedp.NewRemoteAllocator(context.Background(), "http://localhost:9222")
+	// Connect to the already running Chrome instance using the remote debugger (no need to specify a new path)
+	// Connect to the remote Chrome instance (running with --remote-debugging-port=9222)
+	allocatorCtx, cancel := chromedp.NewRemoteAllocator(
+		context.Background(), 
+		"http://localhost:9222", // Connect to the existing Chrome instance via remote debugging
+	)
+	defer cancel()
+
+	// Create a new chromedp context with the allocator context
+	ctx, cancel := chromedp.NewContext(allocatorCtx)
 	defer cancel()
 
 	// Process all job links correctly
-	if err := ProcessJobLinks(ctx, jobLinks); err != nil { // Fix: Pass full jobLinks map
+	if err := ProcessJobLinks(ctx, jobLinks); err != nil {
 		log.Fatalf("❌ Error processing job links: %v", err)
 	}
-
 	fmt.Println("✅ Job application automation completed.")
+
+	// Send a success message
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Job links saved in job_links.csv"})
+
+	cancel()
 }

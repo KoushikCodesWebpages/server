@@ -88,7 +88,18 @@ func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSi
 
 // Job Listings Handler
 func JobListingsHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := chromedp.NewContext(context.Background())
+	// Set up chromedp with Chromium executable path (optional)
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", false), // Disable headless mode (optional)
+		chromedp.Flag("executable-path", "/snap/bin/chromium"), // Uncomment and replace with actual path if needed
+	)
+
+	// Create a new context with the specified options
+	allocatorCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	// Create a new chromedp context using the allocator context
+	ctx, cancel := chromedp.NewContext(allocatorCtx)
 	defer cancel()
 
 	jobTitles := []string{
@@ -99,11 +110,16 @@ func JobListingsHandler(w http.ResponseWriter, r *http.Request) {
 	location := "Berlin, Germany"
 	dateSincePosted := ""
 
+	// Fetch and store jobs
 	if err := fetchAndStoreJobs(ctx, jobTitles, location, dateSincePosted); err != nil {
 		http.Error(w, fmt.Sprintf("Error fetching job listings: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// Send a success message
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Job links saved in job_links.csv"})
+
+	cancel()
 }
+
