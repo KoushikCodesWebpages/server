@@ -73,7 +73,7 @@ func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSi
 			if job.Link != "" {
 				writer.Write([]string{job.Title, job.Link})
 				count++
-				if count >= 5 {
+				if count >= 50 {
 					break
 				}
 			}
