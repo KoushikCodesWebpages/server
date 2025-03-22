@@ -34,10 +34,17 @@ func AutoHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	jobTitles := []string{
-		"Software Engineer", "Data Scientist", "Product Manager",
-		"DevOps Engineer", "Cybersecurity Analyst", "Cloud Engineer",
-		"Machine Learning Engineer", "Frontend Developer", "Backend Developer", "QA Engineer",
+	"Software Engineer", "Data Scientist", "Product Manager",
+	"DevOps Engineer", "Cybersecurity Analyst", "Cloud Engineer",
+	"Machine Learning Engineer", "Frontend Developer", "Backend Developer", "QA Engineer",
+	
+	// New Titles
+	"Software Engineering Intern", "Data Engineer", "Full Stack Developer",
+	"AI Engineer", "Mobile App Developer", "Game Developer",
+	"Embedded Software Engineer", "Blockchain Developer", "NLP Engineer",
+	"Big Data Engineer",
 	}
+
 	location := "Berlin, Germany"
 	dateSincePosted := ""
 
