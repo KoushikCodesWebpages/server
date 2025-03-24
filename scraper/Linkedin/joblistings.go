@@ -1,4 +1,4 @@
-package scraper
+package Linkedin
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func constructSearchUrl(keywords, location, dateSincePosted string) string {
 
 // Fetch job listings for multiple titles and store in CSV
 func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSincePosted string) error {
-	file, err := os.Create("storage/job_links.csv")
+	file, err := os.Create("scraper/storage/Linkedin_job_links.csv")
 	if err != nil {
 		return fmt.Errorf("failed to create CSV file: %v", err)
 	}

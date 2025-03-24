@@ -1,4 +1,4 @@
-package scraper
+package Linkedin
 
 import (
 	"context"
@@ -7,15 +7,12 @@ import (
 	"log"
 	"net/http"
 	"time"
-
+	
 	"github.com/chromedp/chromedp"
 )
 
-// Assuming these functions are defined elsewhere in your code:
-// fetchAndStoreJobs, StartChrome, LoadJobLinks, ProcessJobLinks, UploadCSVToAzure
 
-// AutoHandler automates the entire process: fetching jobs, applying on LinkedIn, and uploading to Azure SQL
-func AutoHandler(w http.ResponseWriter, r *http.Request) {
+func LinkedInHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Job Listings (Fetch and store jobs in CSV)
 	fmt.Println("🚀 Starting Job Listings automation...")
 

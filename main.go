@@ -9,8 +9,9 @@ import (
 	"os/signal"
 	"time"
 	"io/ioutil"
-
-	"job_scraper/scraper" // Correct import path
+	
+	"job_scraper/scraper" 
+	"job_scraper/scraper/Linkedin"
 	"syscall"
 )
 
@@ -31,10 +32,13 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Define the routes and their handlers
-	mux.HandleFunc("/joblistings", scraper.JobListingsHandler)   // Job listings route
-	mux.HandleFunc("/loginlinkedin", scraper.LoginLinkedInHandler) // LinkedIn login route
-	mux.HandleFunc("/uploaddb", scraper.PostDBHandler)           // Database upload route
-	mux.HandleFunc("/automation", scraper.AutoHandler)           // Automation route
+	mux.HandleFunc("/joblistings", Linkedin.JobListingsHandler)  
+	// Linkedin Job listings route
+	mux.HandleFunc("/loginlinkedin", Linkedin.LoginLinkedInHandler) 
+    // Database upload route
+	mux.HandleFunc("/uploaddb", Linkedin.PostDBHandler) 
+	//Final Automation
+	mux.HandleFunc("/linkedinautomation", Linkedin.LinkedInHandler)           // Automation route
 
 	// Enable CORS support
 	handler := enableCors(mux)
