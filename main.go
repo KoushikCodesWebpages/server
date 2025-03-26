@@ -22,8 +22,8 @@ func suppressLogs() {
 
 
 func main() {
-	suppressLogs()
-
+	//suppressLogs()
+	
 	// Set up a channel to listen for an interrupt signal (Ctrl+C)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -38,7 +38,10 @@ func main() {
     // Database upload route
 	mux.HandleFunc("/uploaddb", Linkedin.PostDBHandler) 
 	//Final Automation
-	mux.HandleFunc("/linkedinautomation", Linkedin.LinkedInHandler)           // Automation route
+	mux.HandleFunc("/linkedinautomation", Linkedin.LinkedInHandler)
+	// Automation route
+
+
 
 	// Enable CORS support
 	handler := enableCors(mux)

@@ -69,7 +69,7 @@ func UploadCSVToAzure() error {
 	}
 
 	// Open CSV file
-	filePath := "storage/applications.csv"
+	filePath := "/JSE/scraper/storage/Linkedin_joblinks.csv"
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("❌ Failed to open CSV file (%s): %v", filePath, err)

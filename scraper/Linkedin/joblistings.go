@@ -16,8 +16,9 @@ import (
 
 // Job struct to hold job data
 type Job struct {
-	Title string `json:"title"`
-	Link  string `json:"link"`
+	Title       string `json:"title"`
+	Link        string `json:"link"`
+	IsEasyApply bool   `json:"isEasyApply"` // Add this field
 }
 
 // Clean text utility function
@@ -36,7 +37,7 @@ func constructSearchUrl(keywords, location, dateSincePosted string) string {
 
 // Fetch job listings for multiple titles and store in CSV
 func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSincePosted string) error {
-	file, err := os.Create("scraper/storage/Linkedin_job_links.csv")
+	file, err := os.Create("storage/Linkedin_jobs.csv")
 	if err != nil {
 		return fmt.Errorf("failed to create CSV file: %v", err)
 	}
@@ -46,7 +47,7 @@ func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSi
 	defer writer.Flush()
 
 	// Write CSV header
-	writer.Write([]string{"Title", "Job Link"})
+	writer.Write([]string{"Title", "Job Link", "Components", "Description"})
 
 	for _, title := range jobTitles {
 		searchURL := constructSearchUrl(title, location, dateSincePosted)
@@ -58,7 +59,8 @@ func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSi
 			chromedp.WaitVisible(`.jobs-search__results-list`, chromedp.ByQuery),
 			chromedp.Evaluate(`Array.from(document.querySelectorAll('.jobs-search__results-list li')).map(el => ({
 				title: "`+title+`",
-				link: el.querySelector('.base-card__full-link')?.href || ''
+				link: el.querySelector('.base-card__full-link')?.href || '',
+				isEasyApply: el.querySelector('.jobs-apply-button--top-card') !== null // Detect Easy Apply button
 			}))`, &jobs),
 		)
 
@@ -67,24 +69,25 @@ func fetchAndStoreJobs(ctx context.Context, jobTitles []string, location, dateSi
 			continue
 		}
 
-		// Limit to 5 job links per title
+		// Limit to 5 job links per title (excluding Easy Apply)
 		count := 0
 		for _, job := range jobs {
-			if job.Link != "" {
-				writer.Write([]string{job.Title, job.Link})
+			if job.Link != "" && !job.IsEasyApply { // Skip Easy Apply jobs
+				writer.Write([]string{job.Title, job.Link, "nan", "nan"}) // Ensure 4 columns
 				count++
-				if count >= 50 {
+				if count >= 5 {
 					break
 				}
 			}
 		}
 
-		fmt.Printf("✅ Stored %d jobs for %s\n", count, title)
+		fmt.Printf("✅ Stored %d jobs for %s (excluding Easy Apply)\n", count, title)
 	}
 
-	fmt.Println("📂 Job listings saved in job_links.csv")
+	fmt.Println("📂 Job listings saved in Linkedin_jobs.csv")
 	return nil
 }
+
 
 // Job Listings Handler
 func JobListingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -95,17 +98,15 @@ func JobListingsHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Create a new context with the specified options
-	allocatorCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
+	allocatorCtx, allocatorCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer allocatorCancel() // Ensures Chrome instance cleanup
 
 	// Create a new chromedp context using the allocator context
-	ctx, cancel := chromedp.NewContext(allocatorCtx)
-	defer cancel()
+	ctx, ctxCancel := chromedp.NewContext(allocatorCtx)
+	defer ctxCancel() // Ensures page cleanup
 
 	jobTitles := []string{
-		"Software Engineer", "Data Scientist", "Product Manager",
-		"DevOps Engineer", "Cybersecurity Analyst", "Cloud Engineer",
-		"Machine Learning Engineer", "Frontend Developer", "Backend Developer", "QA Engineer",
+		"Backend Developer",
 	}
 	location := "Berlin, Germany"
 	dateSincePosted := ""
@@ -116,10 +117,21 @@ func JobListingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clear browser session by resetting ChromeDP
+	err := chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return chromedp.Cancel(ctx) // Clears the session and resets context
+		}),
+	)
+
+	if err != nil {
+		fmt.Printf("❌ Failed to clear session: %v\n", err)
+	}
+
 	// Send a success message
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Job links saved in job_links.csv"})
-
-	cancel()
+	json.NewEncoder(w).Encode(map[string]string{"message": "Job links saved in linkedin_jobs.csv"})
 }
+
+
 

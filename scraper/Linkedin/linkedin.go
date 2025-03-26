@@ -56,16 +56,17 @@ func LinkedInHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("🚀 Starting LinkedIn job application automation...")
 
 	// Start Chrome (Chromium) with remote debugging
-	if err := StartChrome(); err != nil {
+	/*if err := StartChrome(); err != nil {
 		log.Fatalf("❌ Failed to start Chrome: %v", err)
 	}
 	fmt.Println("✅ Chrome launched successfully.")
+	*/
 
 	// Wait for Chrome to start and be ready for remote debugging
 	time.Sleep(5 * time.Second)
 
 	// Load job links from CSV file
-	jobLinks, err := LoadJobLinks("storage/job_links.csv")
+	jobLinks, err := LoadJobLinks("../../storage/linkedin_jobs.csv")
 	if err != nil {
 		log.Fatalf("❌ Failed to load job links: %v", err)
 	}
