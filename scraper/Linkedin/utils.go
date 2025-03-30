@@ -103,7 +103,7 @@ func captureAndCloseNewTab(ctx context.Context, jobTitle string, existingTabs ma
 func InitializeCSVFiles() error {
 	// Define headers
 	failedJobsHeaders := []string{"Job Title", "Job Link", "Reason", "Timestamp"}
-	applicationLinksHeaders := []string{"Job Title", "Job Link"}
+	applicationLinksHeaders := []string{"Job Title","Company", "Description","Job Link"}
 
 	// Initialize files with headers if they are empty
 	if err := createCSVWithHeaders("storage/failed_jobs.csv", failedJobsHeaders); err != nil {
