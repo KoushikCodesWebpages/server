@@ -8,22 +8,27 @@ import (
 	"os"
 	"os/signal"
 	"time"
+	"syscall"
 	"io/ioutil"
 	
-	"job_scraper/scraper" 
+	"job_scraper/scraper"
 	"job_scraper/scraper/Linkedin"
-	"syscall"
+	"job_scraper/config"
+	
 )
 
 func suppressLogs() {
 	log.SetOutput(ioutil.Discard) // Disables all logs
 }
 
-
-
 func main() {
-	//suppressLogs()
-	
+	// Initialize the database
+	db, err := config.InitializeDatabase() // No import needed as it's in the same package
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize the database: %v", err)
+	}
+	defer db.Close() // Ensure the database is closed when the program exits
+
 	// Set up a channel to listen for an interrupt signal (Ctrl+C)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -32,16 +37,17 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Define the routes and their handlers
-	mux.HandleFunc("/joblistings", Linkedin.JobListingsHandler)  
-	// Linkedin Job listings route
-	mux.HandleFunc("/loginlinkedin", Linkedin.LoginLinkedInHandler) 
-    // Database upload route
-	mux.HandleFunc("/uploaddb", Linkedin.PostDBHandler) 
-	//Final Automation
-	mux.HandleFunc("/linkedinautomation", Linkedin.LinkedInHandler)
-	// Automation route
-
-
+	mux.HandleFunc("/joblistings", func(w http.ResponseWriter, r *http.Request) {
+		Linkedin.JobListingsHandler(w, r, db)  // Pass the db to the handler
+	})
+	mux.HandleFunc("/viewjobs", func(w http.ResponseWriter, r *http.Request) {
+		Linkedin.ViewJobsHandler(w, r, db)
+	})
+	
+	//mux.HandleFunc("/loginlinkedin", Linkedin.LoginLinkedInHandler)
+	//mux.HandleFunc("/uploaddb", func(w http.ResponseWriter, r *http.Request) {
+	//	Linkedin.PostDBHandler(w, r, db)  // Pass the db to the handler
+	//})
 
 	// Enable CORS support
 	handler := enableCors(mux)

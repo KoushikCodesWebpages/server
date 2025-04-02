@@ -6,6 +6,8 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20250319231242-a755498943c8
 	github.com/chromedp/chromedp v0.13.2
 	github.com/denisenkom/go-mssqldb v0.12.3
+	github.com/google/uuid v1.6.0
+	github.com/mattn/go-sqlite3 v1.14.24
 )
 
 require (

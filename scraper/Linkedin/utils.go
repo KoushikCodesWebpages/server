@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
+
 	
 	"encoding/csv"
 
@@ -18,6 +18,44 @@ import (
 	
 )
 
+// InitializeCSVFiles initializes the required CSV files with headers
+func InitializeCSVFiles() error {
+	failedJobsHeaders := []string{"Job Title", "Job Link", "Reason", "Timestamp"}
+	applicationLinksHeaders := []string{"Job Title", "Company", "Description", "Job Link"}
+
+	if err := createCSVWithHeaders("storage/failed_jobs.csv", failedJobsHeaders); err != nil {
+		return err
+	}
+	if err := createCSVWithHeaders("storage/Linkedin_joblinks.csv", applicationLinksHeaders); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+
+// createCSVWithHeaders creates a CSV file with headers if it doesn't exist
+func createCSVWithHeaders(filePath string, headers []string) error {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		file, err := os.Create(filePath)
+		if err != nil {
+			return fmt.Errorf("❌ Failed to create file %s: %v", filePath, err)
+		}
+		defer file.Close()
+
+		writer := csv.NewWriter(file)
+		defer writer.Flush()
+
+		if err := writer.Write(headers); err != nil {
+			return fmt.Errorf("❌ Failed to write headers: %v", err)
+		}
+		fmt.Printf("✅ Created CSV file with headers: %s\n", filePath)
+	}
+	return nil
+}
+
+
+// StopChrome closes the Chromium browser process
 func StopChrome() {
 	if chromeCmd != nil {
 		fmt.Println("🛑 Closing Chromium...")
@@ -30,31 +68,6 @@ func StopChrome() {
 }
 
 
-// navigateAndClickApply navigates to the job page and attempts to click the apply button
-func navigateAndClickApply(ctx context.Context, jobTitle, jobLink string) error {
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(jobLink),
-		chromedp.Sleep(5*time.Second),
-	)
-	if err != nil {
-		log.Printf("❌ Failed to navigate to job: %s -> %v\n", jobTitle, err)
-		StoreFailedJob(jobTitle, jobLink, "Navigation failed")
-		return err
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.Click(`div.jobs-apply-button--top-card button`, chromedp.NodeVisible),
-		chromedp.Sleep(3*time.Second),
-	)
-	if err != nil {
-		log.Printf("⚠️ No apply button found for %s: %v\n", jobTitle, err)
-		StoreFailedJob(jobTitle, jobLink, "Apply button missing")
-		return err
-	}
-
-	return nil
-}
-
 // captureAndCloseNewTab captures the application tab and closes it
 func captureAndCloseNewTab(ctx context.Context, jobTitle string, existingTabs map[target.ID]struct{}) ([]string, error) {
 	var capturedURLs []string
@@ -66,7 +79,6 @@ func captureAndCloseNewTab(ctx context.Context, jobTitle string, existingTabs ma
 		return nil, err
 	}
 
-	// Identify new non-LinkedIn tabs
 	for _, t := range newTabs {
 		if _, exists := existingTabs[t.TargetID]; !exists && t.Type == "page" && t.URL != "" && !strings.Contains(t.URL, "linkedin.com") {
 			capturedURLs = append(capturedURLs, t.URL)
@@ -81,7 +93,6 @@ func captureAndCloseNewTab(ctx context.Context, jobTitle string, existingTabs ma
 		}
 	}
 
-	// Close the new tab if it was opened
 	if newTabID != "" {
 		tabCtx, cancel := chromedp.NewContext(ctx, chromedp.WithTargetID(newTabID))
 		defer cancel()
@@ -97,42 +108,4 @@ func captureAndCloseNewTab(ctx context.Context, jobTitle string, existingTabs ma
 	}
 
 	return capturedURLs, nil
-}
-
-
-func InitializeCSVFiles() error {
-	// Define headers
-	failedJobsHeaders := []string{"Job Title", "Job Link", "Reason", "Timestamp"}
-	applicationLinksHeaders := []string{"Job Title","Company", "Description","Job Link"}
-
-	// Initialize files with headers if they are empty
-	if err := createCSVWithHeaders("storage/failed_jobs.csv", failedJobsHeaders); err != nil {
-		return err
-	}
-	if err := createCSVWithHeaders("storage/Linkedin_joblinks.csv", applicationLinksHeaders); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func createCSVWithHeaders(filePath string, headers []string) error {
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		file, err := os.Create(filePath) // Creates a new file
-		if err != nil {
-			return fmt.Errorf("❌ Failed to create file %s: %v", filePath, err)
-		}
-		defer file.Close()
-
-		writer := csv.NewWriter(file)
-		defer writer.Flush()
-
-		// Write headers
-		if err := writer.Write(headers); err != nil {
-			return fmt.Errorf("❌ Failed to write headers: %v", err)
-		}
-		fmt.Printf("✅ Created CSV file with headers: %s\n", filePath)
-	}
-	return nil
 }
