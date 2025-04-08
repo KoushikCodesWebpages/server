@@ -3,9 +3,7 @@ package Linkedin
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 	"strconv"
@@ -73,7 +71,7 @@ func insertJobIfNotExists(db *sql.DB, job Job) error {
 
     // Attempt to insert the job into the database
     _, err := db.Exec(`
-        INSERT INTO jobs (id, jobid, title, company, location, posted_date, link, processed)
+        INSERT INTO linkedin_jobs (id, jobid, title, company, location, posted_date, link, processed)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         uuid.New().String(), strconv.FormatInt(job.JobID, 10), job.Title, job.Company, job.Location, job.PostedDate, job.Link, false,
     )
@@ -153,7 +151,7 @@ func fetchAndStoreJobs(ctx context.Context, db *sql.DB, jobTitles []string, loca
 					continue
 				}
 				count++
-				if count >= 50 {
+				if count >= 2 {
 					break
 				}
 			}
@@ -166,81 +164,41 @@ func fetchAndStoreJobs(ctx context.Context, db *sql.DB, jobTitles []string, loca
 	return nil
 }
 
-// JobListingsHandler handles job scraping & storing in DB
-func JobListingsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	ctx, cancel := setupChromedpContext()
+
+// LinkedinJobListingsHandler handles job scraping and storing for LinkedIn.
+func LinkedinJobListingsHandler(ctx context.Context, db *sql.DB) error {
+	// Set up a chromedp context with cancel
+	chromeCtx, cancel := setupChromedpContext()
 	defer cancel()
 
 	jobTitles := []string{
 		"Data Scientist",
-		"Machine Learning Engineer",
-		"Data Engineer",
-		"Business Intelligence Developer",
-		"Artificial Intelligence Engineer",
-		"Natural Language Processing Engineer",
-		"Computer Vision Engineer",
-		"DevOps Engineer",
-		"Cloud Engineer",
-		"Full Stack Developer",
-		"Cybersecurity Engineer",
-		"UX Designer",
-		"Product Manager",
-		"Solutions Architect",
-		"IT Project Manager",
-		"Database Administrator",
-		"Software Engineer",
-		"Data Analyst",
-		"Business Analyst",
-		"Technical Program Manager",
-		"ML Ops",
+		// "Machine Learning Engineer",
+		// "Data Engineer",
+		// "Business Intelligence Developer",
+		// "Artificial Intelligence Engineer",
+		// "Natural Language Processing Engineer",
+		// "Computer Vision Engineer",
+		// "DevOps Engineer",
+		// "Cloud Engineer",
+		// "Full Stack Developer",
+		// "Cybersecurity Engineer",
+		// "UX Designer",
+		// "Product Manager",
+		// "Solutions Architect",
+		// "IT Project Manager",
+		// "Database Administrator",
+		// "Software Engineer",
+		// "Data Analyst",
+		// "Business Analyst",
+		// "Technical Program Manager",
+		// "ML Ops",
 	}
 	location := "Berlin, Germany"
 	dateSincePosted := ""
 
-	// Fetch and store jobs in DB
-	if err := fetchAndStoreJobs(ctx, db, jobTitles, location, dateSincePosted); err != nil {
-		http.Error(w, fmt.Sprintf("Error fetching job listings: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Send success response
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Job links saved in database."})
+	// Perform scraping and store in DB
+	return fetchAndStoreJobs(chromeCtx, db, jobTitles, location, dateSincePosted)
 }
 
-// ViewJobsHandler handles fetching jobs from DB
-func ViewJobsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	rows, err := db.Query("SELECT id, jobid, title, company, location, posted_date, link, processed FROM jobs ORDER BY posted_date DESC")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error fetching jobs: %v", err), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
 
-	var jobs []JobResponse
-	for rows.Next() {
-		var job JobResponse
-		err := rows.Scan(&job.ID, &job.JobID, &job.Title, &job.Company, &job.Location, &job.PostedDate, &job.Link, &job.Processed)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error scanning row: %v", err), http.StatusInternalServerError)
-			return
-		}
-		jobs = append(jobs, job)
-	}
-
-	// Get the count of jobs
-	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&count)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error fetching job count: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Convert result to JSON and return response
-	type response struct {
-		Count int            `json:"count"`
-		Jobs  []JobResponse `json:"jobs"`
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response{Count: count, Jobs: jobs})
-}

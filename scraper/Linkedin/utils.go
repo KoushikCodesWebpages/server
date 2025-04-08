@@ -2,58 +2,14 @@ package Linkedin
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"strings"
-
-	
-	"encoding/csv"
-
-	
-	//"path/filepath"
 
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/cdproto/target"
-	
 )
-
-// InitializeCSVFiles initializes the required CSV files with headers
-func InitializeCSVFiles() error {
-	failedJobsHeaders := []string{"Job Title", "Job Link", "Reason", "Timestamp"}
-	applicationLinksHeaders := []string{"Job Title", "Company", "Description", "Job Link"}
-
-	if err := createCSVWithHeaders("storage/failed_jobs.csv", failedJobsHeaders); err != nil {
-		return err
-	}
-	if err := createCSVWithHeaders("storage/Linkedin_joblinks.csv", applicationLinksHeaders); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-
-// createCSVWithHeaders creates a CSV file with headers if it doesn't exist
-func createCSVWithHeaders(filePath string, headers []string) error {
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		file, err := os.Create(filePath)
-		if err != nil {
-			return fmt.Errorf("❌ Failed to create file %s: %v", filePath, err)
-		}
-		defer file.Close()
-
-		writer := csv.NewWriter(file)
-		defer writer.Flush()
-
-		if err := writer.Write(headers); err != nil {
-			return fmt.Errorf("❌ Failed to write headers: %v", err)
-		}
-		fmt.Printf("✅ Created CSV file with headers: %s\n", filePath)
-	}
-	return nil
-}
-
 
 // StopChrome closes the Chromium browser process
 func StopChrome() {
@@ -67,32 +23,41 @@ func StopChrome() {
 	}
 }
 
-
-// captureAndCloseNewTab captures the application tab and closes it
-func captureAndCloseNewTab(ctx context.Context, jobTitle string, existingTabs map[target.ID]struct{}) ([]string, error) {
+// captureAndCloseNewTab captures the application link and stores it in linkedin_job_application_links
+func captureAndCloseNewTab(ctx context.Context, db *sql.DB, jobID string, existingTabs map[target.ID]struct{}) ([]string, error) {
 	var capturedURLs []string
 	var newTabID target.ID
 
+	// Get all open tabs
 	newTabs, err := chromedp.Targets(ctx)
 	if err != nil {
 		log.Printf("❌ Failed to get updated open tabs: %v\n", err)
 		return nil, err
 	}
 
+	// Find new tab that is NOT a LinkedIn page
 	for _, t := range newTabs {
 		if _, exists := existingTabs[t.TargetID]; !exists && t.Type == "page" && t.URL != "" && !strings.Contains(t.URL, "linkedin.com") {
-			capturedURLs = append(capturedURLs, t.URL)
-
-			if err := StoreApplicationLink(jobTitle, t.URL); err != nil {
-				log.Printf("❌ Error saving URL: %v\n", err)
+			cleanURL := strings.TrimSpace(t.URL)
+			if cleanURL == "" {
+				continue
 			}
 
-			fmt.Println("✅ Captured application page:", t.URL)
+			capturedURLs = append(capturedURLs, cleanURL)
+
+			// ✅ Store captured application link in linkedin_job_application_links
+			if err := StoreApplicationLink(db, jobID, cleanURL); err != nil {
+				log.Printf("❌ Error storing application link in DB: %v\n", err)
+			} else {
+				fmt.Println("✅ Captured and stored application page:", cleanURL)
+			}
+
 			newTabID = t.TargetID
-			break
+			break // Stop after capturing one application link
 		}
 	}
 
+	// Close the new tab if found
 	if newTabID != "" {
 		tabCtx, cancel := chromedp.NewContext(ctx, chromedp.WithTargetID(newTabID))
 		defer cancel()

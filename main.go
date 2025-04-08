@@ -3,18 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
 	"syscall"
-	"io/ioutil"
-	
+	"time"
+
+	"job_scraper/config"
 	"job_scraper/scraper"
 	"job_scraper/scraper/Linkedin"
-	"job_scraper/config"
-	
+	"job_scraper/scraper/Xing"
+
 )
 
 func suppressLogs() {
@@ -38,13 +39,31 @@ func main() {
 
 	// Define the routes and their handlers
 	mux.HandleFunc("/joblistings", func(w http.ResponseWriter, r *http.Request) {
-		Linkedin.JobListingsHandler(w, r, db)  // Pass the db to the handler
+		scraper.JobListingsHandler(w, r, db) 
 	})
-	mux.HandleFunc("/viewjobs", func(w http.ResponseWriter, r *http.Request) {
-		Linkedin.ViewJobsHandler(w, r, db)
+	mux.HandleFunc("/viewlinkedmetadata", func(w http.ResponseWriter, r *http.Request) {
+		scraper.ViewJobsHandler(w, r, db)
 	})
-	
-	//mux.HandleFunc("/loginlinkedin", Linkedin.LoginLinkedInHandler)
+	mux.HandleFunc("/loginlinkedin", func(w http.ResponseWriter, r *http.Request) {
+		Linkedin.LoginLinkedInHandler(db,w,r)
+	})
+
+	mux.HandleFunc("/viewlinkedinjobs", func(w http.ResponseWriter, r *http.Request) {
+		Linkedin.ViewLinkedInJobs(db, w, r)
+	})
+	mux.HandleFunc("/loginxing", func(w http.ResponseWriter, r *http.Request) {
+		Xing.LoginXingHandler(db,w,r)
+	})
+	mux.HandleFunc("/viewxingjobs", func(w http.ResponseWriter, r *http.Request) {
+		Xing.ViewXingJobs(db,w,r)
+	})
+
+	/*
+	mux.HandleFunc("/viewlinkedinfailedjobs", func(w http.ResponseWriter, r *http.Request) {
+		Linkedin.ViewLinkedInFailedJobs(db, w, r)
+	})
+		*/
+
 	//mux.HandleFunc("/uploaddb", func(w http.ResponseWriter, r *http.Request) {
 	//	Linkedin.PostDBHandler(w, r, db)  // Pass the db to the handler
 	//})
@@ -53,7 +72,7 @@ func main() {
 	handler := enableCors(mux)
 
 	// Define the server port
-	port := ":5000"
+	port := ":8000"
 	server := &http.Server{
 		Addr:    port,
 		Handler: handler,

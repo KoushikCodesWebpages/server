@@ -4,109 +4,112 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 	
-	"encoding/csv"
+	"database/sql"
 
 	
 	//"path/filepath"
 
+
 	"github.com/chromedp/chromedp"
-	
 )
 
+/// JobTemp struct for temporary processing (matches database columns)
+type JobTemp struct {
+	ID    string `json:"id"`    // Matches id TEXT in linkedin_jobs
+	Title string `json:"title"` // Matches title TEXT
+	Link  string `json:"link"`  // Matches link TEXT
+}
 
-// LoadJobLinks loads job links from the CSV file and returns a map of job title -> links
-func LoadJobLinks(filename string) (map[string][]string, error) {
-	file, err := os.Open(filename)
+// LoadJobLinksFromDB fetches job links from linkedin_jobs
+func LoadJobLinksFromDB(db *sql.DB) (map[string][]JobTemp, error) {
+	rows, err := db.Query("SELECT id, title, link FROM linkedin_jobs")
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %v", err)
+		return nil, fmt.Errorf("failed to load job links: %w", err)
 	}
-	defer file.Close()
+	defer rows.Close()
 
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("error reading CSV file: %v", err)
-	}
+	jobLinks := make(map[string][]JobTemp)
 
-	if len(records) < 2 {
-		return nil, fmt.Errorf("CSV file is empty or contains only headers")
-	}
-
-	jobLinks := make(map[string][]string)
-
-	for _, row := range records[1:] {
-		if len(row) < 2 {
-			continue
+	for rows.Next() {
+		var job JobTemp
+		if err := rows.Scan(&job.ID, &job.Title, &job.Link); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-		title, link := row[0], row[1]
-		jobLinks[title] = append(jobLinks[title], link)
+		jobLinks[job.Title] = append(jobLinks[job.Title], job)
 	}
 
 	return jobLinks, nil
 }
 
-// StoreFailedJob stores a job that failed in a CSV file
-func StoreFailedJob(title, link, reason string) error {
-	file, err := os.OpenFile("storage/failed_jobs.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+type Joblinks struct {
+	ID    int    `json:"id"`    // Matches INTEGER PRIMARY KEY AUTOINCREMENT
+	JobID string `json:"job_id"` // Matches job_id TEXT (foreign key)
+	Link  string `json:"link"`   // Matches job_link TEXT
+}
+
+// StoreApplicationLink stores the application link in the database
+func StoreApplicationLink(db *sql.DB, jobID, link string) error {
+	_, err := db.Exec(`
+        INSERT INTO linkedin_job_application_links (job_id, job_link) 
+        VALUES (?, ?)`, jobID, link, // Fixed incorrect table & column name
+	)
 	if err != nil {
-		return fmt.Errorf("❌ Failed to open file: %v", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{title, link, reason, time.Now().Format(time.RFC3339)}); err != nil {
-		return fmt.Errorf("❌ Failed to write to CSV: %v", err)
+		log.Printf("❌ Failed to store application link in DB: %v\n", err)
+		return err
 	}
 
-	fmt.Printf("⚠️ Stored failed job: %s -> %s (Reason: %s)\n", title, link, reason)
+	fmt.Printf("✅ Stored application link: %s\n", link)
 	return nil
 }
 
-// StoreApplicationLink stores the application link in a CSV file
-func StoreApplicationLink(title, link string) error {
-	file, err := os.OpenFile("storage/Linkedin_joblinks.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+type FailedJob struct {
+	ID      int    `json:"id"`      // Matches INTEGER PRIMARY KEY AUTOINCREMENT
+	JobID   string `json:"job_id"`  // Matches job_id TEXT
+	JobLink string `json:"job_link"` // Matches job_link TEXT
+}
+
+// StoreFailedJob stores a failed job in the database
+func StoreFailedJob(db *sql.DB, jobID, jobLink, reason string) error {
+	_, err := db.Exec(`
+        INSERT INTO linkedin_failed_jobs (job_id, job_link, reason) 
+        VALUES (?, ?, ?)`, jobID, jobLink, reason,
+	)
 	if err != nil {
-		return fmt.Errorf("❌ Failed to open file: %v", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{title, link}); err != nil {
-		return fmt.Errorf("❌ Failed to write to CSV: %v", err)
+		log.Printf("❌ Failed to store failed job in DB: %v\n", err)
+		return err
 	}
 
-	fmt.Printf("✅ Stored application: %s -> %s\n", title, link)
+	fmt.Printf("⚠️ Stored failed job: %s -> %s (Reason: %s)\n", jobID, jobLink, reason)
 	return nil
 }
 
 // navigateAndClickApply navigates to the job page and attempts to click the apply button
-func navigateAndClickApply(ctx context.Context, jobTitle, jobLink string) error {
+func navigateAndClickApply(ctx context.Context, db *sql.DB, jobID string, jobLink string) error {
+	// Navigate to the job posting
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(jobLink),
 		chromedp.Sleep(5*time.Second),
 	)
 	if err != nil {
-		log.Printf("❌ Failed to navigate to job: %s -> %v\n", jobTitle, err)
-		StoreFailedJob(jobTitle, jobLink, "Navigation failed")
+		log.Printf("❌ Failed to navigate to job: %s -> %v\n", jobID, err)
+		StoreFailedJob(db, jobID, jobLink, "Navigation failed")
 		return err
 	}
 
+	// More targeted selector using parent div and apply button
 	err = chromedp.Run(ctx,
-		chromedp.Click("div.jobs-apply-button--top-card button", chromedp.NodeVisible),
+		chromedp.Click(`div.main-actions__ActionsContainer-sc-68c89ebb-0 button[data-testid="apply-button"]`, chromedp.NodeVisible),
 		chromedp.Sleep(3*time.Second),
 	)
 	if err != nil {
-		log.Printf("⚠️ No apply button found for %s: %v\n", jobTitle, err)
-		StoreFailedJob(jobTitle, jobLink, "Apply button missing")
+		log.Printf("⚠️ Apply button not found for jobID %s: %v\n", jobID, err)
+		StoreFailedJob(db, jobID, jobLink, "Apply button missing")
 		return err
 	}
 
 	return nil
 }
+
+
